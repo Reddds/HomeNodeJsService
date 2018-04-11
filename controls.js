@@ -620,4 +620,154 @@ var Label = /** @class */ (function (_super) {
     return Label;
 }(TextControl));
 exports.Label = Label;
+var DkImageTypes;
+(function (DkImageTypes) {
+    DkImageTypes[DkImageTypes["Png"] = 0] = "Png";
+})(DkImageTypes = exports.DkImageTypes || (exports.DkImageTypes = {}));
+var DkImageScaleTypes;
+(function (DkImageScaleTypes) {
+    DkImageScaleTypes[DkImageScaleTypes["FitWidth"] = 1] = "FitWidth";
+    DkImageScaleTypes[DkImageScaleTypes["FitHeight"] = 2] = "FitHeight";
+    DkImageScaleTypes[DkImageScaleTypes["FitOnMaxDimention"] = 3] = "FitOnMaxDimention";
+    DkImageScaleTypes[DkImageScaleTypes["FitOnMinDimension"] = 4] = "FitOnMinDimension";
+    DkImageScaleTypes[DkImageScaleTypes["Stretch"] = 5] = "Stretch";
+})(DkImageScaleTypes = exports.DkImageScaleTypes || (exports.DkImageScaleTypes = {}));
+var Image = /** @class */ (function (_super) {
+    __extends(Image, _super);
+    //private _imageData: Buffer;
+    function Image(id, parent, x, y, width, height, visible, imageType, scaleType, bgR, bgG, bgB, imageFilePath, imageUrl) {
+        var _this = _super.call(this, id, parent, x, y, width, height, visible) || this;
+        _this._imageType = imageType;
+        _this._scaleType = scaleType;
+        _this._bgR = bgR;
+        _this._bgG = bgG;
+        _this._bgB = bgB;
+        _this._imageFilePath = imageFilePath;
+        _this._imageUrl = imageUrl;
+        if (!fs.existsSync(_this._imageFilePath)) {
+            console.error("Image file not existis!");
+            throw new Error("Image file not existis!");
+        }
+        _this.show();
+        // костыль
+        _this.sendImage();
+        return _this;
+    }
+    Image.prototype.downloadImage = function (imageUrl, callback) {
+        var request = require('request').defaults({ encoding: null });
+        request(imageUrl, function (error, response, body) {
+            if (error != null)
+                console.log('error:', error); // Print the error if one occurred
+            //console.log('statusCode:', response && response.statusCode); // Print the response status code if a response was received
+            //console.log('body:', body); // Print the HTML for the Google homepage.
+            //            if(body != null)
+            //                this._imageData = body;
+            callback(body);
+        });
+    };
+    Image.prototype.sendImage = function () {
+        if (this._imageFilePath != null) {
+            var image = fs.readFile(this._imageFilePath, function (err, data) {
+                console.log("wrighting image data " + data.length);
+                if (err) {
+                    console.log("There was an error writing the image");
+                }
+                wstreamWrite.write(data);
+            });
+            return;
+        }
+        /*if(this._imageData != null)
+        {
+            wstreamWrite.write(this._imageData);
+        }*/
+    };
+    Image.prototype.sendSetImageEventHeader = function (imageSize) {
+        var arrlen = 15;
+        var buffer = new ArrayBuffer(arrlen);
+        var uint8 = new Uint8Array(buffer);
+        uint8.set(strToBytes("dsim"));
+        var vId = new DataView(buffer);
+        vId.setUint16(4, this._id, true);
+        vId.setUint8(6, this._imageType);
+        vId.setUint8(7, this._scaleType);
+        vId.setUint8(8, this._bgR);
+        vId.setUint8(9, this._bgG);
+        vId.setUint8(10, this._bgB);
+        vId.setUint32(11, imageSize, true);
+        this.sendEvent(buffer);
+    };
+    Object.defineProperty(Image.prototype, "image", {
+        set: function (imageFilePath) {
+            if (this._imageFilePath == imageFilePath)
+                return;
+            if (!fs.existsSync(imageFilePath)) {
+                console.error("Image file not existis!");
+                return;
+            }
+            //this._imageData = null;
+            this._imageFilePath = imageFilePath;
+            var stats = fs.statSync(this._imageFilePath);
+            var fileSizeInBytes = stats.size;
+            /*
+                    var arrlen = 15;
+                    var buffer = new ArrayBuffer(arrlen);
+                    var uint8 = new Uint8Array(buffer);
+                    uint8.set(strToBytes("dsim"));
+                    var vId = new DataView(buffer);
+                    vId.setUint16(4, this._id, true);
+                    vId.setUint8(6, this._imageType);
+                    vId.setUint8(7, this._scaleType);
+                    vId.setUint8(8, this._bgR);
+                    vId.setUint8(9, this._bgG);
+                    vId.setUint8(10, this._bgB);
+            
+                    vId.setUint32(11, fileSizeInBytes, true);
+                    this.sendEvent(buffer);*/
+            this.sendSetImageEventHeader(fileSizeInBytes);
+            this.sendImage();
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(Image.prototype, "imageUrl", {
+        set: function (imageUrl) {
+            var _this = this;
+            this.downloadImage(imageUrl, function (imageData) {
+                if (imageData == null) {
+                    console.log("imageData = null!");
+                    return;
+                }
+                _this._imageFilePath = null;
+                _this._imageUrl = imageUrl;
+                _this.sendSetImageEventHeader(imageData.byteLength);
+                wstreamWrite.write(imageData);
+            });
+            /* this._imageUrl = imageUrl;
+             var request = require('request').defaults({ encoding: null });
+             request.get(s3Url, function (err, res, body) {
+                 //process exif here
+             });*/
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Image.prototype.getCreateBytes = function () {
+        var header = this.getCreateBytesHeader("dimg");
+        var stats = fs.statSync(this._imageFilePath);
+        var fileSizeInBytes = stats.size;
+        var buffer = new ArrayBuffer(header.length + 9);
+        var uint8 = new Uint8Array(buffer);
+        uint8.set(header);
+        var vId = new DataView(buffer);
+        vId.setUint8(17, this._imageType);
+        vId.setUint8(18, this._scaleType);
+        vId.setUint8(19, this._bgR);
+        vId.setUint8(20, this._bgG);
+        vId.setUint8(21, this._bgB);
+        vId.setUint32(22, fileSizeInBytes, true);
+        return buffer;
+    };
+    return Image;
+}(Control));
+exports.Image = Image;
 //# sourceMappingURL=controls.js.map
