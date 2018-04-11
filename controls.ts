@@ -473,10 +473,11 @@ class Control extends Command
     protected _y: number;
     protected _width: number;
     protected _height: number;
+    protected _visible: boolean;
 
     protected _onClick: Function;
 
-    constructor(id: number, parent: ContainerControl, x: number, y: number, width: number, height: number)
+    constructor(id: number, parent: ContainerControl, x: number, y: number, width: number, height: number, visible: boolean)
     {
         super();
         this._parent = parent;
@@ -485,6 +486,7 @@ class Control extends Command
         this._y = y;
         this._width = width;
         this._height = height;
+        this._visible = visible;
 
         if(AllControls[id] != null)
         {
@@ -494,6 +496,28 @@ class Control extends Command
         {
             AllControls[id] = this;
         }
+    }
+
+    protected getCreateBytesHeader(commandName: string): Uint8Array
+    {
+        let parentId = 0;
+        if(this._parent != null)
+            parentId = this._parent.id;
+
+        if(commandName.length != 4)
+            return null;
+        var buffer = new ArrayBuffer(17);
+        var uint8 = new Uint8Array(buffer);
+        uint8.set(strToBytes(commandName));
+        var vId = new DataView(buffer);
+        vId.setUint16(4, this._id, true);        
+        vId.setUint16(6, parentId, true);
+        vId.setUint16(8, this._x, true);
+        vId.setUint16(10, this._y, true);
+        vId.setUint16(12, this._width, true);
+        vId.setUint16(14, this._height, true);
+        vId.setUint8(16, 1); // visible
+        return uint8;
     }
 
     set onClick(fun: Function)
@@ -535,6 +559,26 @@ class Control extends Command
     {
 
     }
+
+    get visible()
+    {
+        return this._visible;
+    }
+
+    set visible(vis: boolean)
+    {
+        if(this._visible == vis)
+            return;
+        this._visible = vis;
+        var buffer = new ArrayBuffer(7);
+        var uint8 = new Uint8Array(buffer);
+        uint8.set(strToBytes("dsvi"));
+        var vId = new DataView(buffer);
+        vId.setUint16(4, this._id, true);
+        vId.setUint8(6, this._visible ? 1: 0);
+        this.sendEvent(buffer);
+
+    }
 }
 
 class ContainerControl extends Control {
@@ -548,9 +592,9 @@ export class Panel extends ContainerControl
     private _bgG: number;
     private _bgB: number;
 
-    constructor(id: number, parent: ContainerControl, x: number, y: number, width: number, height: number, 
+    constructor(id: number, parent: ContainerControl, x: number, y: number, width: number, height: number, visible: boolean,
         r: number = 0, g: number = 0, b: number = 0) {
-        super(id, parent, x, y, width, height);
+        super(id, parent, x, y, width, height, visible);
         this._bgR = r;
         this._bgG = g;
         this._bgB = b;
@@ -559,23 +603,15 @@ export class Panel extends ContainerControl
     }
 
     protected getCreateBytes() {
-        let parentId = 0;
-        if(this._parent != null)
-            parentId = this._parent.id;
+        let header = this.getCreateBytesHeader("dpan");
 
-        var buffer = new ArrayBuffer(19);
+        var buffer = new ArrayBuffer(header.length + 3);
         var uint8 = new Uint8Array(buffer);
-        uint8.set(strToBytes("dpan"));
+        uint8.set(header);
         var vId = new DataView(buffer);
-        vId.setUint16(4, this._id, true);
-        vId.setUint16(6, parentId, true);
-        vId.setUint16(8, this._x, true);
-        vId.setUint16(10, this._y, true);
-        vId.setUint16(12, this._width, true);
-        vId.setUint16(14, this._height, true);
-        vId.setUint8(16, this._bgR);
-        vId.setUint8(17, this._bgG);
-        vId.setUint8(18, this._bgB);
+        vId.setUint8(17, this._bgR);
+        vId.setUint8(18, this._bgG);
+        vId.setUint8(19, this._bgB);
 
         console.log("Panel getCreateBytes " + buffer.byteLength);
         return buffer;
@@ -613,9 +649,9 @@ export class TextBox extends TextControl {
     private _r: number;
     private _g: number;
     private _b: number;
-    constructor(id: number, parent: ContainerControl, x: number, y: number, width: number, height: number, text = "", 
+    constructor(id: number, parent: ContainerControl, x: number, y: number, width: number, height: number, visible: boolean, text = "", 
                 fsize: number = 32, r: number = 0, g: number = 0, b: number = 0) {
-        super(id, parent, x, y, width, height);
+        super(id, parent, x, y, width, height, visible);
         this._text = text;
         this._fontSize = fsize;
         this._r = r;
@@ -626,28 +662,21 @@ export class TextBox extends TextControl {
     }
 
     protected getCreateBytes() {
-        let parentId = 0;
-        if(this._parent != null)
-            parentId = this._parent.id;
+        let header = this.getCreateBytesHeader("dtbx");
 
         const textLen = this._text.length;
-        var arrlen = 23 + textLen;
-        var buffer = new ArrayBuffer(arrlen);
+
+        var buffer = new ArrayBuffer(header.length + 7 + textLen);
         var uint8 = new Uint8Array(buffer);
-        uint8.set(strToBytes("dtbx"));
+        uint8.set(header);
         var vId = new DataView(buffer);
-        vId.setUint16(4, this._id, true);
-        vId.setUint16(6, parentId, true);
-        vId.setUint16(8, this._x, true);
-        vId.setUint16(10, this._y, true);
-        vId.setUint16(12, this._width, true);
-        vId.setUint16(14, this._height, true);
-        vId.setUint16(16, this._fontSize, true);
-        vId.setUint8(18, this._r);
-        vId.setUint8(19, this._g);
-        vId.setUint8(20, this._b);
-        vId.setUint16(21, textLen, true);
-        uint8.set(strToBytes(this._text), 23);
+
+        vId.setUint16(17, this._fontSize, true);
+        vId.setUint8(19, this._r);
+        vId.setUint8(20, this._g);
+        vId.setUint8(21, this._b);
+        vId.setUint16(22, textLen, true);
+        uint8.set(strToBytes(this._text), 24);
         return buffer;
     }
 }
@@ -657,9 +686,9 @@ export class Label extends TextControl {
     private _r: number;
     private _g: number;
     private _b: number;
-    constructor(id: number, parent: ContainerControl, x: number, y: number, width: number, height: number, text = "", 
+    constructor(id: number, parent: ContainerControl, x: number, y: number, width: number, height: number, visible: boolean, text = "", 
     fsize: number = 32, r: number = 0, g: number = 0, b: number = 0) {
-        super(id, parent, x, y, width, height);
+        super(id, parent, x, y, width, height, visible);
         this._text = text;
         this._fontSize = fsize;
         this._r = r;
@@ -670,28 +699,21 @@ export class Label extends TextControl {
     }
 
     protected getCreateBytes() {
-        let parentId = 0;
-        if(this._parent != null)
-            parentId = this._parent.id;
+        let header = this.getCreateBytesHeader("dlbl");
 
         const textLen = this._text.length;
-        var arrlen = 23 + textLen;
-        var buffer = new ArrayBuffer(arrlen);
+
+        var buffer = new ArrayBuffer(header.length + 7 + textLen);
         var uint8 = new Uint8Array(buffer);
-        uint8.set(strToBytes("dlbl"));
+        uint8.set(header);
         var vId = new DataView(buffer);
-        vId.setUint16(4, this._id, true);
-        vId.setUint16(6, parentId, true);
-        vId.setUint16(8, this._x, true);
-        vId.setUint16(10, this._y, true);
-        vId.setUint16(12, this._width, true);
-        vId.setUint16(14, this._height, true);
-        vId.setUint16(16, this._fontSize, true);
-        vId.setUint8(18, this._r);
-        vId.setUint8(19, this._g);
-        vId.setUint8(20, this._b);
-        vId.setUint16(21, textLen, true);
-        uint8.set(strToBytes(this._text), 23);
+
+        vId.setUint16(17, this._fontSize, true);
+        vId.setUint8(19, this._r);
+        vId.setUint8(20, this._g);
+        vId.setUint8(21, this._b);
+        vId.setUint16(22, textLen, true);
+        uint8.set(strToBytes(this._text), 24);
         return buffer;
     }
 }

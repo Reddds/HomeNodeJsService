@@ -395,7 +395,7 @@ var ConfigDateAndTime = /** @class */ (function (_super) {
 exports.ConfigDateAndTime = ConfigDateAndTime;
 var Control = /** @class */ (function (_super) {
     __extends(Control, _super);
-    function Control(id, parent, x, y, width, height) {
+    function Control(id, parent, x, y, width, height, visible) {
         var _this = _super.call(this) || this;
         _this._parent = parent;
         _this._id = id;
@@ -403,6 +403,7 @@ var Control = /** @class */ (function (_super) {
         _this._y = y;
         _this._width = width;
         _this._height = height;
+        _this._visible = visible;
         if (AllControls[id] != null) {
             new Error("Control with this id (" + id + ") already exists!");
         }
@@ -411,6 +412,25 @@ var Control = /** @class */ (function (_super) {
         }
         return _this;
     }
+    Control.prototype.getCreateBytesHeader = function (commandName) {
+        var parentId = 0;
+        if (this._parent != null)
+            parentId = this._parent.id;
+        if (commandName.length != 4)
+            return null;
+        var buffer = new ArrayBuffer(17);
+        var uint8 = new Uint8Array(buffer);
+        uint8.set(strToBytes(commandName));
+        var vId = new DataView(buffer);
+        vId.setUint16(4, this._id, true);
+        vId.setUint16(6, parentId, true);
+        vId.setUint16(8, this._x, true);
+        vId.setUint16(10, this._y, true);
+        vId.setUint16(12, this._width, true);
+        vId.setUint16(14, this._height, true);
+        vId.setUint8(16, 1); // visible
+        return uint8;
+    };
     Object.defineProperty(Control.prototype, "onClick", {
         set: function (fun) {
             this._onClick = fun;
@@ -445,6 +465,25 @@ var Control = /** @class */ (function (_super) {
     // payload - additional data
     Control.prototype.onMessage = function (name, payload) {
     };
+    Object.defineProperty(Control.prototype, "visible", {
+        get: function () {
+            return this._visible;
+        },
+        set: function (vis) {
+            if (this._visible == vis)
+                return;
+            this._visible = vis;
+            var buffer = new ArrayBuffer(7);
+            var uint8 = new Uint8Array(buffer);
+            uint8.set(strToBytes("dsvi"));
+            var vId = new DataView(buffer);
+            vId.setUint16(4, this._id, true);
+            vId.setUint8(6, this._visible ? 1 : 0);
+            this.sendEvent(buffer);
+        },
+        enumerable: true,
+        configurable: true
+    });
     return Control;
 }(Command));
 var ContainerControl = /** @class */ (function (_super) {
@@ -456,11 +495,11 @@ var ContainerControl = /** @class */ (function (_super) {
 }(Control));
 var Panel = /** @class */ (function (_super) {
     __extends(Panel, _super);
-    function Panel(id, parent, x, y, width, height, r, g, b) {
+    function Panel(id, parent, x, y, width, height, visible, r, g, b) {
         if (r === void 0) { r = 0; }
         if (g === void 0) { g = 0; }
         if (b === void 0) { b = 0; }
-        var _this = _super.call(this, id, parent, x, y, width, height) || this;
+        var _this = _super.call(this, id, parent, x, y, width, height, visible) || this;
         _this._bgR = r;
         _this._bgG = g;
         _this._bgB = b;
@@ -468,22 +507,14 @@ var Panel = /** @class */ (function (_super) {
         return _this;
     }
     Panel.prototype.getCreateBytes = function () {
-        var parentId = 0;
-        if (this._parent != null)
-            parentId = this._parent.id;
-        var buffer = new ArrayBuffer(19);
+        var header = this.getCreateBytesHeader("dpan");
+        var buffer = new ArrayBuffer(header.length + 3);
         var uint8 = new Uint8Array(buffer);
-        uint8.set(strToBytes("dpan"));
+        uint8.set(header);
         var vId = new DataView(buffer);
-        vId.setUint16(4, this._id, true);
-        vId.setUint16(6, parentId, true);
-        vId.setUint16(8, this._x, true);
-        vId.setUint16(10, this._y, true);
-        vId.setUint16(12, this._width, true);
-        vId.setUint16(14, this._height, true);
-        vId.setUint8(16, this._bgR);
-        vId.setUint8(17, this._bgG);
-        vId.setUint8(18, this._bgB);
+        vId.setUint8(17, this._bgR);
+        vId.setUint8(18, this._bgG);
+        vId.setUint8(19, this._bgB);
         console.log("Panel getCreateBytes " + buffer.byteLength);
         return buffer;
     };
@@ -521,13 +552,13 @@ var TextControl = /** @class */ (function (_super) {
 exports.TextControl = TextControl;
 var TextBox = /** @class */ (function (_super) {
     __extends(TextBox, _super);
-    function TextBox(id, parent, x, y, width, height, text, fsize, r, g, b) {
+    function TextBox(id, parent, x, y, width, height, visible, text, fsize, r, g, b) {
         if (text === void 0) { text = ""; }
         if (fsize === void 0) { fsize = 32; }
         if (r === void 0) { r = 0; }
         if (g === void 0) { g = 0; }
         if (b === void 0) { b = 0; }
-        var _this = _super.call(this, id, parent, x, y, width, height) || this;
+        var _this = _super.call(this, id, parent, x, y, width, height, visible) || this;
         _this._text = text;
         _this._fontSize = fsize;
         _this._r = r;
@@ -537,27 +568,18 @@ var TextBox = /** @class */ (function (_super) {
         return _this;
     }
     TextBox.prototype.getCreateBytes = function () {
-        var parentId = 0;
-        if (this._parent != null)
-            parentId = this._parent.id;
+        var header = this.getCreateBytesHeader("dtbx");
         var textLen = this._text.length;
-        var arrlen = 23 + textLen;
-        var buffer = new ArrayBuffer(arrlen);
+        var buffer = new ArrayBuffer(header.length + 7 + textLen);
         var uint8 = new Uint8Array(buffer);
-        uint8.set(strToBytes("dtbx"));
+        uint8.set(header);
         var vId = new DataView(buffer);
-        vId.setUint16(4, this._id, true);
-        vId.setUint16(6, parentId, true);
-        vId.setUint16(8, this._x, true);
-        vId.setUint16(10, this._y, true);
-        vId.setUint16(12, this._width, true);
-        vId.setUint16(14, this._height, true);
-        vId.setUint16(16, this._fontSize, true);
-        vId.setUint8(18, this._r);
-        vId.setUint8(19, this._g);
-        vId.setUint8(20, this._b);
-        vId.setUint16(21, textLen, true);
-        uint8.set(strToBytes(this._text), 23);
+        vId.setUint16(17, this._fontSize, true);
+        vId.setUint8(19, this._r);
+        vId.setUint8(20, this._g);
+        vId.setUint8(21, this._b);
+        vId.setUint16(22, textLen, true);
+        uint8.set(strToBytes(this._text), 24);
         return buffer;
     };
     return TextBox;
@@ -565,13 +587,13 @@ var TextBox = /** @class */ (function (_super) {
 exports.TextBox = TextBox;
 var Label = /** @class */ (function (_super) {
     __extends(Label, _super);
-    function Label(id, parent, x, y, width, height, text, fsize, r, g, b) {
+    function Label(id, parent, x, y, width, height, visible, text, fsize, r, g, b) {
         if (text === void 0) { text = ""; }
         if (fsize === void 0) { fsize = 32; }
         if (r === void 0) { r = 0; }
         if (g === void 0) { g = 0; }
         if (b === void 0) { b = 0; }
-        var _this = _super.call(this, id, parent, x, y, width, height) || this;
+        var _this = _super.call(this, id, parent, x, y, width, height, visible) || this;
         _this._text = text;
         _this._fontSize = fsize;
         _this._r = r;
@@ -581,27 +603,18 @@ var Label = /** @class */ (function (_super) {
         return _this;
     }
     Label.prototype.getCreateBytes = function () {
-        var parentId = 0;
-        if (this._parent != null)
-            parentId = this._parent.id;
+        var header = this.getCreateBytesHeader("dlbl");
         var textLen = this._text.length;
-        var arrlen = 23 + textLen;
-        var buffer = new ArrayBuffer(arrlen);
+        var buffer = new ArrayBuffer(header.length + 7 + textLen);
         var uint8 = new Uint8Array(buffer);
-        uint8.set(strToBytes("dlbl"));
+        uint8.set(header);
         var vId = new DataView(buffer);
-        vId.setUint16(4, this._id, true);
-        vId.setUint16(6, parentId, true);
-        vId.setUint16(8, this._x, true);
-        vId.setUint16(10, this._y, true);
-        vId.setUint16(12, this._width, true);
-        vId.setUint16(14, this._height, true);
-        vId.setUint16(16, this._fontSize, true);
-        vId.setUint8(18, this._r);
-        vId.setUint8(19, this._g);
-        vId.setUint8(20, this._b);
-        vId.setUint16(21, textLen, true);
-        uint8.set(strToBytes(this._text), 23);
+        vId.setUint16(17, this._fontSize, true);
+        vId.setUint8(19, this._r);
+        vId.setUint8(20, this._g);
+        vId.setUint8(21, this._b);
+        vId.setUint16(22, textLen, true);
+        uint8.set(strToBytes(this._text), 24);
         return buffer;
     };
     return Label;
